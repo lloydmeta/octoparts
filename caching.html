@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<!--[if lt IE 7]>      <html class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]>         <html class="no-js lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]>         <html class="no-js lt-ie9"> <![endif]-->
+<!--[if gt IE 8]><!--> <html lang="en" class="no-js"> <!--<![endif]-->
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <!-- Use title if it's in the page YAML frontmatter -->
+    <title>Caching | Octoparts</title>
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=h">
+
+    <!-- Place favicon.ico and apple-touch-icon.png in the root directory -->
+
+    <script src="js/vendor/modernizr-2.6.1.min.js"></script>
+
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/main.css">
+  </head>
+  <body>
+    <!--[if lt IE 7]>
+        <p class="chromeframe">You are using an outdated browser. <a href="http://browsehappy.com/">Upgrade your browser today</a> or <a href="http://www.google.com/chromeframe/?redirect=true">install Google Chrome Frame</a> to better experience this site.</p>
+    <![endif]-->
+
+    <div class="container">
+      <div class="row">
+
+        <div class="col-md-3">
+          <div id="sidebar">
+            <div class="sidebar-logo">
+<a href="./">                  <img width="220px" src="img/octo_logo1.png" />
+</a>            </div>
+
+            <ul class="nav nav-pills nav-stacked">
+              <li ><a href="getting-started.html">Getting started</a></a></li>
+              <li ><a href="http-api.html">HTTP API</a></a></li>
+              <li class='active'><a href="caching.html">Caching</a></a></li>
+              <li ><a href="timeouts.html">Timeouts</a></a></li>
+              <li ><a href="logging-visualization.html">Logging & Visualization</a></a></li>
+              <li ><a href="internals.html">Internals</a></a></li>
+              <li ><a href="alert-mails.html">Alert mails</a></a></li>
+              <li ><a href="contributing.html">Contributing</a></a></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="col-md-9">
+          <h1>Caching</h1>
+          <p>Octoparts caches the following information in <a href="http://memcached.org/">Memcached</a>:</p>
+
+<ul>
+<li>Responses from API calls</li>
+<li>The configuration data that is stored in the DB</li>
+</ul>
+
+<h3>Versioning</h3>
+
+<p>In order to provide powerful support for cache invalidation, Octoparts maintains version information at the level of</p>
+
+<ul>
+<li>individual API endpoints (e.g. the <code>getUserProfile</code> endpoint)</li>
+<li>particular values of parameters for a given endpoint (e.g. &lsquo;get me the user profile where userId = 123&rsquo;)</li>
+</ul>
+
+<p>This allows us to invalidate cached data at two different scopes.</p>
+
+<ol>
+<li><p>By increasing the version of the <code>getUserProfile</code> part, any API responses cached with the previous version will be invalidated.</p></li>
+<li><p>By increasing the version of the <code>(partId = getUserProfile, userId = 123)</code> tuple, we can invalidate any cached versions of that endpoint&rsquo;s response for that particular user.</p></li>
+</ol>
+
+<div class='panel panel-default'><div class='panel-heading'>Note</div><div class='panel-body'>  When we invalidate a cached value, we never actually remove it from the cache. We rely on Memcached&rsquo;s LRU behaviour to eventually discard unneeded data.
+</div></div>
+
+<p>The version information is also stored in Memcached so that it can be shared across all Octoparts instances, in order to improve the cache hit rate. It is also cached in-memory on each instance for performance reasons.</p>
+
+<h3>Cache groups</h3>
+
+<p>Sometimes, when one piece of data changes, you want to invalidate a number of cached API responses in one go. For example, if a user of your site gains an activity point for performing some action, you may want to invalidate all data that was generated based on the user&rsquo;s out-of-date activity point count.</p>
+
+<p>Octoparts provides support for this with the concept of cache groups. Every API endpoint or parameter can be a member of one or more cache groups. One call to the Octoparts cache invalidation API will flush the cache for all members of the given group.</p>
+
+<p>For example, say we have three API endpoints that take <code>userId</code> parameters:</p>
+
+<ul>
+<li><code>getUserProfile(userId)</code></li>
+<li><code>getUserActivityPointCount(userId)</code></li>
+<li><code>getUserPremiumStatus(userId)</code></li>
+</ul>
+
+<p>Assume that each of these <code>userId</code> parameters has been registered with the <code>userActivityPoints</code> cache group.</p>
+
+<p>When user 123&rsquo;s activity point count changes, just make one request to </p>
+<pre><code class="highlight plaintext">/cache/invalidate/cacheGroup/userActivityPoints/params/123
+</code></pre>
+
+<p>Cached data from all three APIs relating to that user will be invalidated.</p>
+
+<h3>Cache headers</h3>
+
+<p>Octoparts supports a number of cache-related HTTP headers when communicating both with clients (i.e. frontends) and with backend APIS.</p>
+
+<h4>Clients</h4>
+
+<ul>
+<li><code>Cache-Control: no-cache</code></li>
+</ul>
+
+<p>If the client sets this header when performing an aggregate request, Octoparts will guarantee not to return any API responses that were retrieved from the cache.</p>
+
+<h4>Backend APIs</h4>
+
+<ul>
+<li><code>Cache-Control: no-cache</code></li>
+</ul>
+
+<p>If this header is set on an API response, Octoparts will guarantee not to insert the response into the cache. Note, however, that if the response already happens to be present in the cache, Octoparts will not remove it.</p>
+
+<ul>
+<li><code>Cache-Control: max-age=3600</code></li>
+</ul>
+
+<p>If <code>max-age</code> is set, Octoparts will cache the response with the given TTL (in seconds). However, if a TTL is also set in the admin screen for that endpoint, the shorter of the two TTLs will be used.</p>
+
+<ul>
+<li><code>ETag</code>, <code>Last-Modified</code></li>
+</ul>
+
+<p>If one or more of these headers are set, Octoparts will store their values together with the response itself in the cache. It will cache the response indefinitely, even if it is supposed to have a TTL.</p>
+
+<p>The next time Octoparts looks up the response in the cache, <strong>only</strong> if the cached response has exceeded its TTL, it will contact the backend API again in order to validate that the cached response is not stale. It will send <code>If-None-Match</code> and/or <code>If-Modified-Since</code> headers. </p>
+
+<p>If the backend responds with a <code>304 Not Modified</code>, Octoparts will return the cached response to the client. Otherwise it will cache the new response and return it to the client.</p>
+
+<h3>Internals</h3>
+
+<p>This flowchart shows the gory details of how Octoparts looks up an API response in the cache.</p>
+
+<p><a target="_blank" href="img/cache-lookup-sequence.png">    <img width="500px" src="img/cache-lookup-sequence.png" />
+</a></p>
+
+        </div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+      <div class="container">
+        <div class="row">
+          <div class="col-md-12">
+            <h4>Made by M3</h4>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-12">
+            <ul class="list-inline site-footer-link-list">
+                <li>
+                  <a href="http://m3dev.github.io/">M3Dev</a>
+                </li>
+                <li>
+                  <a href="http://at.m3.com/job">We're hiring!</a>
+                </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.0/jquery.min.js"></script>
+    <script>window.jQuery || document.write('<script src="js/vendor/jquery-1.8.0.min.js"><\/script>')</script>
+    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+    <script src="js/plugins.js"></script>
+    <script src="js/main.js"></script>
+
+    <!-- Google Analytics: change UA-XXXXX-X to be your site's ID. -->
+    <script>
+        var _gaq=[['_setAccount','UA-XXXXX-X'],['_trackPageview']];
+        (function(d,t){var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+        g.src=('https:'==location.protocol?'//ssl':'//www')+'.google-analytics.com/ga.js';
+        s.parentNode.insertBefore(g,s)}(document,'script'));
+    </script>
+  </body>
+</html>
