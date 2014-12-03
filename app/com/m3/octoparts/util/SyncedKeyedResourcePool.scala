@@ -1,16 +1,19 @@
 package com.m3.octoparts.util
 
+import scala.concurrent.stm._
+
 /**
  * A pool of key-value pairs.
  * It has a method to build a new value and a method to clean up all values that are no longer needed.
  */
-trait SyncedKeyedResourcePool[V] {
-  private var holder: Map[Symbol, V] = Map.empty[Symbol, V]
+trait SyncedKeyedResourcePool[K, V] {
+
+  private val holder: TMap[K, V] = TMap.empty[K, V]
 
   /**
    * Factory method to create a new element
    */
-  protected def makeNew(key: Symbol): V
+  protected def makeNew(key: K): V
 
   /**
    * Listener that is run after a value is removed
@@ -22,16 +25,19 @@ trait SyncedKeyedResourcePool[V] {
    * Get the value corresponding to the given key.
    * If no such value existed, a new one is created.
    */
-  final def getOrCreate(key: Symbol): V = key.synchronized {
+  final def getOrCreate(key: K): V = atomic { implicit inTxn =>
     holder.get(key) match {
       case Some(v) => v
       case None => {
         val d = makeNew(key)
-        holder = holder + (key -> d)
+        val old = holder.put(key, d)
+        old.foreach(onRemove)
         d
       }
     }
   }
+
+  val thing = atomic { implicit txn => }
 
   /**
    * Remove any elements whose keys are not contained in the given set.
@@ -39,11 +45,11 @@ trait SyncedKeyedResourcePool[V] {
    *
    * @param validKeys all keys that you want to keep
    */
-  final def cleanObsolete(validKeys: Set[Symbol]): Unit = synchronized {
+  final def cleanObsolete(validKeys: Set[K]): Unit = atomic { implicit inTxn =>
     holder.foreach {
       case (key, value) =>
         if (!validKeys.contains(key)) {
-          holder = holder - key
+          holder -= key
           onRemove(value)
         }
     }

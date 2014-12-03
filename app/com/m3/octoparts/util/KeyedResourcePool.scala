@@ -6,13 +6,13 @@ import java.util.concurrent.{ ConcurrentHashMap, ConcurrentMap }
  * A pool of key-value pairs.
  * It has a method to build a new value and a method to clean up all values that are no longer needed.
  */
-trait KeyedResourcePool[V] {
-  private val holder: ConcurrentMap[Symbol, V] = new ConcurrentHashMap[Symbol, V]()
+trait KeyedResourcePool[K, V] {
+  private val holder: ConcurrentMap[K, V] = new ConcurrentHashMap[K, V]()
 
   /**
    * Factory method to create a new element
    */
-  protected def makeNew(key: Symbol): V
+  protected def makeNew(key: K): V
 
   /**
    * Listener that is run after a value is removed
@@ -24,7 +24,7 @@ trait KeyedResourcePool[V] {
    * Get the value corresponding to the given key.
    * If no such value existed, a new one is created.
    */
-  def getOrCreate(key: Symbol): V = Option(holder.get(key)) match {
+  def getOrCreate(key: K): V = Option(holder.get(key)) match {
     case Some(v) => v
     case None =>
       val d = makeNew(key)
@@ -42,7 +42,7 @@ trait KeyedResourcePool[V] {
    *
    * @param validKeys all keys that you want to keep
    */
-  final def cleanObsolete(validKeys: Set[Symbol]): Unit = {
+  final def cleanObsolete(validKeys: Set[K]): Unit = {
     val it = holder.entrySet().iterator
     while (it.hasNext) {
       val next = it.next()
