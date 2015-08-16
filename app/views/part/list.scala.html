@@ -42,8 +42,19 @@
         };
 
         var updateSelectAll = function(selectedShownIds) {
-            var selectAllChecked = (selectedShownIds.length != 0) && (selectedShownIds.length == currentlyShownIds().length);
-            selectAll.prop("checked", selectAllChecked);
+            var someChecked = selectedShownIds.length > 0;
+            if (someChecked) {
+              var allChecked = selectedShownIds.length == currentlyShownIds().length;
+              if (allChecked) {
+                  selectAll.prop("indeterminate", false);
+                  selectAll.prop("checked", true);
+              } else {
+                  selectAll.prop("indeterminate", true);
+              }
+            } else {
+              selectAll.prop("checked", false);
+              selectAll.prop("indeterminate", false);
+            }
         };
 
         var currentlyShownIds = function () {
